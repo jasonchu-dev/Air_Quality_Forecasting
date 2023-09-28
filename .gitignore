@@ -1,3 +1,5 @@
+src/__pycache__/
 .ipynb_checkpoints/
-AirQualityUCI.xlsx
-checkpoint.tar
+models/
+data/
+logs/
