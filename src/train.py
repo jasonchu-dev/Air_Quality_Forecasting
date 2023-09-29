@@ -1,41 +1,42 @@
-import os
-import h5py
 import torch
-import pickle
+import yaml
 import torch.nn as nn
 from torch.optim.lr_scheduler import ReduceLROnPlateau
-from data_loader import load_and_preprocess_data
-from utils import save_checkpoint, format_number
+from data_loader import load_and_preprocess_data, save_data
+from utils import print_get_results, get_path, save_model
 from model import CRNN
 
 def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    os.makedirs('../models', exist_ok=True)
-    file_list = os.listdir('../models')
-    num_files = len(file_list)
-    file_path = f'../models/model_{num_files + 1}.tar'
+    model_path = get_path('../models', file_offset=1)
 
-    lr = 1e-2
-    weight_decay = 0
-    dropout = 0
+    with open('../configs/hyperparameters.yaml', 'r') as file:
+        hyperparameters = yaml.safe_load(file)
+
+    lr = hyperparameters['lr']
+    weight_decay = hyperparameters['weight_decay']
+    dropout = hyperparameters['dropout']
+    factor = hyperparameters['factor']
+    patience = hyperparameters['patience']
+    min_lr = hyperparameters['min_lr']
+    train_size = hyperparameters['train_size']
+    batch_size = hyperparameters['batch_size']
+    epochs = hyperparameters['epochs']
+    reduction = hyperparameters['reduction']
+    mode = hyperparameters['mode']
 
     model = CRNN(input_dim=3, hidden_dim=24, layer_dim=2, output_dim=3, dropout=dropout).to(device)
-    criterion = nn.MSELoss(reduction='sum')
+    criterion = nn.MSELoss(reduction=reduction)
     optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
     # optimizer = torch.optim.RAdam(model.parameters(), lr=lr, weight_decay=weight_decay)
     # optimizer = torch.optim.RMSprop(model.parameters(), lr=lr, weight_decay=weight_decay)
-    scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=25, verbose=True, min_lr=1e-8)
-
-    epochs = 100
+    scheduler = ReduceLROnPlateau(optimizer, mode=mode, factor=factor, patience=patience, verbose=True, min_lr=min_lr)
 
     loss_pts = []
     train_err_pts = []
     val_err_pts = []
     lowest_val_err = float('inf')
-
-    batch_size = 300
-    train_size = 0.8
 
     train_data, val_data, test_data = load_and_preprocess_data(batch_size=batch_size, train_size=train_size)
 
@@ -68,37 +69,17 @@ def main():
             if lowest_val_err > float(torch.sum(val_avg_err)/len(val_avg_err)):
                 lowest_val_err = float(torch.sum(val_avg_err)/len(val_avg_err))
                 best_epoch = epoch
-                save_checkpoint(file_path, model, optimizer, loss, best_epoch)
+                save_model(model_path, model, optimizer, loss, best_epoch)
 
         scheduler.step(loss)
         val_avg_err = float(torch.sum(val_avg_err)/len(val_avg_err))
 
-        epoch = str(epoch).rjust(3)
-        train_loss = format_number(loss.item())
-        train_avg_err = format_number(train_avg_err)
-        val_avg_err = format_number(val_avg_err)
+        train_loss, train_avg_err, val_avg_err = print_get_results(epoch, loss.item(), train_avg_err, val_avg_err)
+        loss_pts.append(train_loss)
+        train_err_pts.append(train_avg_err)
+        val_err_pts.append(val_avg_err)
 
-        print(f'Epoch: {epoch} | Loss: {train_loss} | Train Avg Err: {train_avg_err} | val Avg Err: {val_avg_err}')
-        loss_pts.append(loss.item())
-        train_err_pts.append(float(train_avg_err))
-        val_err_pts.append(float(val_avg_err))
-
-    file_list = os.listdir('../data')
-    num_files = len(file_list)
-    file_path = f'../data/test_data_{num_files}.pkl'
-
-    with open(file_path, 'wb') as file:
-        pickle.dump(test_data, file)
-
-    os.makedirs('../logs', exist_ok=True)
-    file_list = os.listdir('../logs')
-    num_files = len(file_list)
-    file_path = f'../logs/run_{num_files + 1}.h5'
-
-    with h5py.File(file_path, 'w') as f:
-        f.create_dataset('loss_pts', data=loss_pts)
-        f.create_dataset('train_err_pts', data=train_err_pts)
-        f.create_dataset('val_err_pts', data=val_err_pts)
+    save_data(test_data, loss_pts, train_err_pts, val_err_pts)
 
 if __name__ == "__main__":
     main()

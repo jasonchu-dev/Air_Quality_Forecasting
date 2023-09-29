@@ -1,12 +1,13 @@
+import h5py
+import pickle
 import torch
 import dask
 import dask.dataframe as dd
 import pandas as pd
 import numpy as np
-from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import RobustScaler, StandardScaler, MinMaxScaler
 from torch.utils.data import Dataset
 from sklearn.model_selection import train_test_split
+from utils import feature_engr, reorder, norm, get_path
 
 class CustomDataset(Dataset):
     def __init__(self, features, labels, dtype=torch.float):
@@ -25,49 +26,9 @@ def load_and_preprocess_data(batch_size=300, train_size=0.8):
     parts = dask.delayed(pd.read_excel)('../data/AirQualityUCI.xlsx')
     df = dd.from_delayed(parts)
 
-    # -200 are nans
-
-    for i in df.columns[2:]:
-        df[i] = df[i].replace(-200, df[i].mean())
-
-    # 2004-03-10
-    # Timestamp('2004-03-10 00:00:00')
-    # call date() on object to get 'datetime.date(2004, 3, 10)'
-    # attributes are year, month, day, weekday()
-
-    df['Year'] = df['Date'].map(lambda x: x.date().year - 2004, meta=('Date', 'i8'))
-    df['Month'] = df['Date'].map(lambda x: x.date().month, meta=('Date', 'i8'))
-    df['Weekday'] = df['Date'].map(lambda x: x.date().weekday(), meta=('Date', 'i8'))
-
-    # 18:00:00
-    # datetime.time(18, 0)
-    # attributes are hour, minute, second, microsecond
-    #            [0, 23], [0, 59], [0, 59], [0, 999999]
-
-    if type(df['Time'].compute()[0]) == str:
-        df['Hour'] = df['Time'].map(lambda x: int(x[:2]), meta=('Time', 'i8'))
-    else:
-        df['Hour'] = df['Time'].map(lambda x: x.hour, meta=('Time', 'i8'))
-
-    del df['Date']
-    del df['Time']
-
-    columns = list(df.columns)
-    first_four_columns = columns[-4:]
-    remaining_columns = columns[:-4]
-
-    new_order = first_four_columns + remaining_columns
-    df = df[new_order]
-
-    scaler_pipeline = Pipeline([
-        ('robust_scaler', RobustScaler()),
-        ('standard_scaler', StandardScaler()),
-        ('min_max_scaler', MinMaxScaler())
-    ])
-
-    cols = list(df.columns)
-    scaled_data = scaler_pipeline.fit_transform(df)
-    df = dd.from_pandas(pd.DataFrame(scaled_data, columns=cols), npartitions=2)
+    df = feature_engr(df)
+    df = reorder(df)
+    df = norm(df)
 
     scaled_df = df.drop(columns=['CO(GT)', 'NMHC(GT)', 'AH', 'NOx(GT)', 'PT08.S4(NO2)', 'T', 'RH'])
 
@@ -108,3 +69,27 @@ def load_and_preprocess_data(batch_size=300, train_size=0.8):
     )
 
     return train_data, val_data, test_data
+
+def save_data(test_data, loss_pts, train_err_pts, val_err_pts):
+    file_path = get_path('../data', file_offset=0)
+    with open(file_path, 'wb') as file:
+        pickle.dump(test_data, file)
+
+    file_path = get_path('../logs', file_offset=1)
+    with h5py.File(file_path, 'w') as f:
+        f.create_dataset('loss_pts', data=loss_pts)
+        f.create_dataset('train_err_pts', data=train_err_pts)
+        f.create_dataset('val_err_pts', data=val_err_pts)
+
+def load_data():
+    file_path = get_path('../data', file_offset=-1)
+    with open(file_path, 'rb') as file:
+        test_data = pickle.load(file)
+        
+    file_path = get_path('../logs', file_offset=0)
+    with h5py.File(file_path, 'r') as f:
+        loss_pts = np.array(f['loss_pts'])
+        train_err_pts = np.array(f['train_err_pts'])
+        val_err_pts = np.array(f['val_err_pts'])
+
+    return test_data, loss_pts, train_err_pts, val_err_pts
