@@ -4,7 +4,7 @@ Prediction on air quality dataset using deep learning.
 
 Dataset: https://www.kaggle.com/datasets/aayushkandpal/air-quality-time-series-data-uci
 
-# Neural Network
+## Neural Network
 
 Convolutional Recurrent Neural Network:
 * 2 Expansion blocks: Expand features into more features column wise
@@ -29,9 +29,13 @@ Clone
 ```
 Download dataset and unzip. Create a folder called "Data" in project directory. Move excel dataset from unzipped and into "Data".
 
-Download pip and install modules
+Get pip then pip install modules
 ```
     pip install -r requirements.txt
+```
+Or get conda then conda install
+```
+    conda install --file requirements.txt
 ```
 Run scripts
 To train
