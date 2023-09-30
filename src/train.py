@@ -2,7 +2,7 @@ import torch
 import yaml
 import torch.nn as nn
 from torch.optim.lr_scheduler import ReduceLROnPlateau
-from data_loader import load_and_preprocess_data, save_data
+from dataloader import load_and_preprocess_data, save_data
 from utils import print_get_results, get_path, save_model
 from model import CRNN
 
@@ -28,9 +28,8 @@ def main():
 
     model = CRNN(input_dim=3, hidden_dim=24, layer_dim=2, output_dim=3, dropout=dropout).to(device)
     criterion = nn.MSELoss(reduction=reduction)
+    # RAdam and RMSprop also works
     optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
-    # optimizer = torch.optim.RAdam(model.parameters(), lr=lr, weight_decay=weight_decay)
-    # optimizer = torch.optim.RMSprop(model.parameters(), lr=lr, weight_decay=weight_decay)
     scheduler = ReduceLROnPlateau(optimizer, mode=mode, factor=factor, patience=patience, verbose=True, min_lr=min_lr)
 
     loss_pts = []

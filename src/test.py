@@ -1,11 +1,12 @@
 import torch
 import matplotlib.pyplot as plt
-from data_loader import load_data
+from dataloader import load_data
 from utils import load_model
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 def test(test_data, model):
+    # first 3 lists for ground truth, next 3 for predictions
     ground_1 = []
     ground_2 = []
     ground_3 = []

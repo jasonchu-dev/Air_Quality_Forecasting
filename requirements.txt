@@ -1,2 +1,13 @@
 openpyxl
 matplotlib
+dask
+h5py
+pandas
+numpy
+scikit-learn
+matplotlib
+PyYAML
+--extra-index-url https://download.pytorch.org/whl/cu118
+torch
+torchvision
+torchaudio

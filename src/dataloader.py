@@ -21,16 +21,34 @@ class CustomDataset(Dataset):
         feature = self.features[idx]
         label = self.labels[idx]
         return feature, label
+    
+def load_dataloader(X, y, batch_size):
+    data = torch.utils.data.DataLoader(
+        CustomDataset(X, y),
+        batch_size=batch_size,
+        shuffle=False,
+        drop_last=False,
+        num_workers=0,
+        pin_memory=False
+    )
+    return data
 
 def load_and_preprocess_data(batch_size=300, train_size=0.8):
     parts = dask.delayed(pd.read_excel)('../data/AirQualityUCI.xlsx')
     df = dd.from_delayed(parts)
 
+    # convert dates to useful features
     df = feature_engr(df)
     df = reorder(df)
     df = norm(df)
 
+    # some features have too many -200s/nans
     scaled_df = df.drop(columns=['CO(GT)', 'NMHC(GT)', 'AH', 'NOx(GT)', 'PT08.S4(NO2)', 'T', 'RH'])
+
+    """
+    3 samples will be grouped together as 1 sample
+    use first 7 features as X, last 3 features as y
+    """
 
     X = np.array(scaled_df.iloc[:, :7])
     y = np.array(scaled_df.iloc[:, 7:])
@@ -41,35 +59,13 @@ def load_and_preprocess_data(batch_size=300, train_size=0.8):
     X_train, X_tmp, y_train, y_tmp = train_test_split(X, y, train_size=train_size, random_state=42)
     X_test, X_val, y_test, y_val = train_test_split(X_tmp, y_tmp, test_size=0.5, random_state=42, shuffle=False)
 
-    train_data = torch.utils.data.DataLoader(
-        CustomDataset(X_train, y_train),
-        batch_size=batch_size,
-        shuffle=False,
-        drop_last=False,
-        num_workers=0,
-        pin_memory=False
-    )
-
-    val_data = torch.utils.data.DataLoader(
-        CustomDataset(X_val, y_val),
-        batch_size=batch_size,
-        shuffle=False,
-        drop_last=False,
-        num_workers=0,
-        pin_memory=False
-    )
-
-    test_data = torch.utils.data.DataLoader(
-        CustomDataset(X_test, y_test, dtype=torch.float32),
-        batch_size=batch_size,
-        shuffle=False,
-        drop_last=False,
-        num_workers=0,
-        pin_memory=False
-    )
+    train_data = load_dataloader(X_train, y_train, batch_size)
+    val_data = load_dataloader(X_val, y_val, batch_size)
+    test_data = load_dataloader(X_test, y_test, batch_size)
 
     return train_data, val_data, test_data
 
+# during training
 def save_data(test_data, loss_pts, train_err_pts, val_err_pts):
     file_path = get_path('../data', file_offset=0)
     with open(file_path, 'wb') as file:
@@ -81,6 +77,7 @@ def save_data(test_data, loss_pts, train_err_pts, val_err_pts):
         f.create_dataset('train_err_pts', data=train_err_pts)
         f.create_dataset('val_err_pts', data=val_err_pts)
 
+# for testing
 def load_data():
     file_path = get_path('../data', file_offset=-1)
     with open(file_path, 'rb') as file:
